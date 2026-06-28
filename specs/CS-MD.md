@@ -1,0 +1,1028 @@
+---
+Type: SPEC
+Version: 0.0.1
+Updated: 2026-06-29T02:05+09:00
+Status: draft
+Provenance: L0/contextus
+---
+
+# CS-MD: Contextus Structured Markdown
+
+
+## Abstract
+
+CS-MD (Contextus Structured Markdown) is a document specification for
+markdown files used in AI-assisted collaborative work. It defines header
+fields, section names, and inline markers that give markdown documents
+machine-parseable semantics while remaining human-readable.
+
+CS-MD is not a new format — it IS markdown. It is not a protocol —
+how documents are exchanged is defined elsewhere. It is not a schema —
+what makes a document valid is defined by CS-SCHEMA.
+
+CS-MD は AI 協業で使う markdown 文書の仕様。header fields, section names,
+inline markers を定義し、markdown 文書に機械可読な意味論を与える。
+新しいフォーマットではない（markdown そのもの）。プロトコルでもスキーマでもない。
+文書の書き方を定義する。妥当性は CS-SCHEMA が定義する。
+
+### Related Specifications
+
+| Spec | Role |
+|---|---|
+| **CS-MD** (this document) | Document specification: how to write |
+| [CS-SCHEMA](https://github.com/lef/context-structured-markdown/blob/main/specs/CS-SCHEMA.md) | Validation schema: what makes it valid |
+| [GIT-IS-THE-INDEX](https://github.com/lef/context-structured-markdown/blob/main/specs/GIT-IS-THE-INDEX.md) | Design rationale: Git is the primary index |
+| [CS-INDEX](https://github.com/lef/context-structured-markdown/blob/main/specs/CS-INDEX.md) | Optional derived cache format |
+| [CONTEXTUS-REGISTRY](https://github.com/lef/contextus/blob/main/specs/CONTEXTUS-REGISTRY.md) | Contextus-owned registry specification |
+
+The canonical vocabulary registry is maintained by Contextus:
+
+```text
+https://github.com/lef/contextus/registry.jsonl
+```
+
+## Status of This Document
+
+This is a draft specification. It is subject to change based on
+implementation experience in Contextus-based projects.
+
+## 1. Introduction
+
+### 1.1 Motivation
+
+There is no universal structured markdown body specification.
+Multiple tools (Spec Kit, GSD, OpenSpec, AGENTS.md) have invented
+their own conventions independently, creating silos.
+(Surveyed 2026-03-21: 11 projects, none universal.)
+
+CS-MD fills this gap with a minimal, grep-friendly convention.
+
+> "Tool calling was designed for machines but we had to teach it to them.
+> Markdown was designed for humans and they already knew it."
+> — Fabian Kubler
+
+### 1.2 What CS-MD Is
+
+CS-MD makes markdown files **self-describing** and **self-contained**.
+A regular markdown file is just content.
+A CS-MD file knows WHAT it is (Type), WHERE it came from (Provenance),
+WHEN it changed (Updated), and WHAT it relates to (Tags).
+
+CS-MD is the **HTTP headers of markdown** — metadata that describes the payload.
+
+CS-MD is also the **microformats of markdown**. Just as microformats (2004)
+and microdata (2009) added semantic conventions to HTML without changing
+the HTML format, CS-MD adds semantic conventions to markdown without
+changing the markdown format. Parsers that don't understand CS-MD
+still render the document normally (graceful degradation).
+
+```
+HTML  + microformats (2004) = structured HTML (class="vcard")
+HTML  + microdata (2009)    = structured HTML (itemscope, itemprop)
+HTML  + JSON-LD             = structured HTML (<script type="application/ld+json">)
+Markdown + CS-MD (2026)     = structured Markdown (YAML frontmatter, ## Task)
+```
+
+Any markdown file can become a CS-MD document by adding a YAML frontmatter
+block with `Type:`. CS-MD is not limited to Structured Flow documents.
+README, AGENTS.md, rule files — all can be CS-MD if they opt in.
+
+### Why Self-Containment Matters for LLMs
+
+AI agents lose context between sessions. When an agent reads a CS-MD file,
+it gets **everything it needs** from that single file:
+
+- **Type** tells the agent what role this document plays
+- **Tags** tell the agent what topics are covered and which other documents are related
+- **Provenance** tells the agent where this document came from and how trustworthy it is
+- **Context** tells the agent where the discussion behind this document happened
+
+Without CS-MD, an agent must read multiple files, run git commands, and infer
+relationships from prose — consuming context budget and risking errors.
+
+**CS-MD makes each file a self-contained unit of knowledge that an agent
+can understand without external context.** This is not optional for
+multi-agent orchestration where sub-agents receive only focused task prompts,
+not full project context.
+
+### 1.3 Scope and Prerequisites
+
+Prerequisites:
+
+- **MUST**: Documents are managed in a **git** repository
+  (Provenance uses git hashes, references rely on git rename tracking,
+  file size and history are queried from git — NOT from filesystem)
+- **SHOULD**: The project follows Structured Flow for work artifacts
+  (PLAN, SPEC, TODO, TASK, KNOWLEDGE, DRAFT)
+- **MAY**: The contextus layer system (L0-L3) is in use
+
+CS-MD depends on **git** and **markdown parsers** (grep/awk).
+CS-MD does NOT depend on any specific filesystem, OS, or tool.
+
+### 1.4 What CS-MD Is NOT
+
+- **Not a new document format.** CS-MD IS markdown.
+- **Not a protocol.** How documents are exchanged is defined elsewhere.
+- **Not a schema.** What makes a document valid is defined by CS-SCHEMA.
+- **Not general-purpose.** It assumes git-managed projects.
+
+### 1.5 Philosophy
+
+#### Why markdown?
+
+Markdown is LLM-friendly **not because it is a good specification, but because
+LLMs are trained on massive amounts of it** (GitHub, documentation, READMEs).
+
+```
+English is human-friendly  ← not because the grammar is clean,
+                              but because humans grew up with it
+Markdown is LLM-friendly   ← not because the spec is unambiguous,
+                              but because LLMs grew up on GitHub
+```
+
+In fact, markdown is a notoriously difficult format to parse. The original
+specification (John Gruber, 2004) was informal prose, not a formal grammar.
+CommonMark (2014) attempted to formalize it but the spec is 600+ pages with
+hundreds of edge cases. Different parsers produce different output for the
+same input. Writing a fully correct markdown parser is considered one of the
+harder parsing challenges in practice.
+
+**CS-MD does not depend on markdown being a good specification.**
+CS-MD uses a **safe subset** of markdown that is believed to be unambiguous.
+
+> **WARNING: This safe subset analysis is INCOMPLETE (TBD).**
+> The table below is a preliminary assessment. A thorough analysis against
+> MacFarlane's 6 pain points (emphasis, indented code, raw HTML, link syntax,
+> list item membership, block-level interruption) and CommonMark's 600+ edge
+> cases is required before this section can be considered final.
+> Markdown is not context-free — there may be ambiguities in constructs
+> we currently assume are safe. Evidence (testing against multiple parsers)
+> is needed. See KNOWLEDGE for the full parser difficulty survey.
+
+| CS-MD uses | Ambiguous? | Why safe |
+|---|---|---|
+| `---` (YAML frontmatter) | Edge case | File-start-only rule. All major tools agree. See below |
+| `# Title` (H1) | No | One per document, first heading |
+| `## Section` (H2) | No | Flat structure, no nesting |
+| `- item` (list) | Edge cases exist | CS-MD uses simple flat lists only |
+| `[text](path)` (link) | No | Standard syntax, well-defined |
+| `> text` (blockquote) | No | Used only for quotations in body. NOT for metadata |
+
+CS-MD avoids: deeply nested lists, indentation-sensitive constructs,
+HTML-in-markdown, complex table formatting, and other ambiguous areas.
+
+**YAML frontmatter `---` ambiguity**: `---` is also a CommonMark thematic break.
+The industry consensus (GitHub, Obsidian, Hugo, Jekyll, VitePress, and all major
+tools) is: `---` at the very start of a file = frontmatter; `---` elsewhere = thematic
+break. CS-MD follows this convention. Closing `---` MAY be replaced with `...`
+(YAML document end marker) for parsers that need disambiguation.
+
+**The design principle**: use markdown because LLMs already know it,
+but restrict to the subset that is unambiguous and grep-parseable.
+Do not depend on a markdown parser for CS-MD header extraction.
+
+#### Visible metadata
+
+Unlike HTML's `<meta>` tags (hidden from users) or JSON-LD `<script>` blocks
+(invisible), CS-MD metadata is **visible**. YAML frontmatter renders as a
+metadata table on GitHub and as editable Properties in Obsidian.
+
+This is a deliberate choice, not a limitation. In the world of AI-assisted work,
+**both humans and agents read the same document**. Hidden metadata creates
+a split: humans see one thing, machines see another. CS-MD rejects this split.
+The metadata IS content. What agents see, humans see. What humans write,
+agents read.
+
+**Why YAML frontmatter, not blockquote `>`?** CS-MD originally used `> Key: Value`
+(blockquote) for metadata. This conflicted with standard blockquote usage for
+quotations in body text, making it impossible to distinguish metadata from quotes.
+YAML frontmatter is the de facto industry standard for markdown metadata
+(GitHub, Obsidian, Hugo, Jekyll, MADR 4.0). LLMs recognize it without
+additional instruction. The migration was made before public release (2026-03-23).
+
+#### Documents as the interface
+
+CS-MD believes that **documents are the interface between humans and AI agents**.
+Not APIs. Not tool calls. Not chat messages. Documents.
+
+- A HANDOFF.md (Type: CONTEXT) is how an agent tells the next agent (or human) what happened
+- A TASK.md is how a human (or orchestrator) tells an agent what to do
+- A KNOWLEDGE.md is how discoveries persist across sessions and agents
+
+These documents must be readable by the smallest agent (4K context) and the
+largest (1M+ context). They must be writable by humans in a text editor and
+by agents through file operations. They must survive git push, pull, merge,
+and decades of format changes.
+
+Markdown — despite its flaws — is the only format that meets all these
+requirements today. CS-MD makes it work by staying in the safe subset
+and adding just enough structure to be machine-useful.
+
+#### The structure spectrum is intentional
+
+Every CS-MD header field has a declared structure level (§3.0):
+structured, semi-structured, or free-form. This is not accidental.
+
+HTTP learned this lesson the hard way: `User-Agent` was free-form for 25 years,
+became unparseable, and had to be replaced with Structured Fields (RFC 8941).
+CS-MD declares structure level on day one, so there is no future pressure
+to "fix" a field's format. Free-form fields (Context, Description) are
+**intentionally** free-form. Their value is in human readability. Forcing
+structure on them would make them harder to write and no more useful to
+machines (which can read the structured fields instead).
+
+### 1.6 Design Principles
+
+#### Foundational (the 4 pillars)
+
+These four principles define what CS-MD IS. They are not optional guidelines —
+they are the architectural decisions that make CS-MD work.
+
+1. **Semantic conventions on an existing format.**
+   CS-MD adds meaning to standard markdown. No new syntax is invented.
+   YAML frontmatter is an established convention. `## Task` is a standard heading.
+   The MEANING is new. The FORMAT is not. (Microformats principle, 2004.)
+
+2. **Graceful degradation.**
+   A parser that does NOT understand CS-MD still renders the document normally.
+   `---` renders as a thematic break. `## Task` renders as a heading.
+   Nothing breaks. Agents that don't know CS-MD read it as regular markdown.
+
+3. **Postel's Law (Jon Postel, RFC 761).**
+   Be conservative in what you send, be liberal in what you accept.
+   Unknown header fields MUST be ignored, not rejected.
+   New extensions MUST NOT break existing parsers.
+   This is how CS-MD stays extensible without coordination between tools.
+
+4. **Registry-governed vocabulary.**
+   Field names, section names, and markers are registered in
+   [CONTEXTUS-REGISTRY](https://github.com/lef/contextus/blob/main/specs/CONTEXTUS-REGISTRY.md), the authoritative trust anchor
+   (IANA principle). This guarantees that `Type: KNOWLEDGE` means the same thing
+   everywhere. CS-MD can be used independently, but the registry remains the
+   single source of truth for vocabulary definitions.
+
+#### Derived
+
+- **grep/awk parseable.** No special parser required. `sed -n '/^---$/,/^---$/p' file.md` extracts all headers.
+- **EBP (Evidence-Based Practice).** This spec is validated by running code (dogfooding), not by reasoning.
+- **Self-describing.** Each file carries its own metadata. No external lookup needed to understand what it is.
+- **Self-contained.** Each file carries enough context for an agent to act on it without reading other files.
+
+### 1.3 Terminology
+
+The key words "MUST", "MUST NOT", "SHOULD", "SHOULD NOT", and "MAY"
+in this document are to be interpreted as described in RFC 8174
+when, and only when, they appear in ALL CAPITALS.
+
+## 2. Document Structure
+
+### 2.1 Metadata and Content
+
+A CS-MD document has two layers, analogous to HTML's `<head>` and `<body>`:
+
+```
+HTML:                          CS-MD:
+  <head>                         ---                    ← metadata (YAML frontmatter)
+    <title>Page</title>          Type: CONTEXT
+    <meta name="author"...>      Updated: 2026-03-21
+  </head>                        Tags: finding, mcp
+  <body>                         ---
+    <h1>Page</h1>                # Document Title       ← title (serves both roles)
+    <p>content</p>               ## Section Name         ← content (body)
+  </body>                        (markdown body)
+```
+
+**Key difference from HTML**: CS-MD metadata is **visible**.
+HTML's `<meta>` is hidden from users. CS-MD uses YAML frontmatter, which
+GitHub renders as a metadata table and Obsidian renders as editable Properties.
+Non-CS-MD renderers display `---` as thematic breaks — the document still reads
+naturally. This is graceful degradation (Pillar 2).
+
+`# Title` serves both `<title>` (metadata: document name) and `<h1>`
+(content: first heading). In markdown there is no separate head/body split,
+so one element serves both roles.
+
+### 2.2 Parts of a CS-MD Document
+
+1. **Frontmatter** (YAML metadata between `---` delimiters)
+2. **Title** (H1, exactly one)
+3. **Sections** (H2 headings, some fixed per document type)
+4. **Body** (standard markdown within sections)
+
+```markdown
+---
+Type: CONTEXT
+Updated: 2026-03-21T00:00+09:00
+---
+
+# Document Title
+
+## Section Name
+(body content)
+```
+
+### 2.3 Change History
+
+**2026-03-23: Blockquote headers → YAML frontmatter**
+
+CS-MD originally used blockquote lines (`> Key: Value`) for metadata.
+Replaced with YAML frontmatter because blockquote headers conflicted with
+standard markdown quotations in body text. If you encounter the old format:
+
+```markdown
+# Title
+
+ > Type: KNOWLEDGE
+ > Updated: 2026-03-21
+```
+
+Convert to YAML frontmatter:
+
+```markdown
+---
+Type: KNOWLEDGE
+Updated: 2026-03-21T00:00+09:00
+---
+
+# Title
+```
+
+**2026-03-23: Type: HANDOFF → Type: CONTEXT**
+
+HANDOFF was too specific — it only described session handoff documents.
+CLAUDE.md (project instructions), README.md, SECURITY.md are all "context
+documents" with the same structural role: information injected for a reader
+(agent or human). Like HTTP Content-Type, the Type field classifies document
+structure, not individual identity. File name provides identity.
+
+`Type: CONTEXT` covers: HANDOFF.md, CLAUDE.md, README.md, SECURITY.md, and
+any other document whose primary purpose is providing context to a reader.
+
+The field names and values are identical — only the container changed.
+During the transition period, parsers SHOULD accept both formats (Postel's Law).
+
+## 3. Header Fields
+
+Header fields are encoded as YAML frontmatter — a `Key: Value` block
+delimited by `---` at the start of the file.
+They are extractable with `sed -n '/^---$/,/^---$/p' document.md | grep ':'`.
+
+### 3.0 Metadata Structure Spectrum
+
+Header fields have different levels of structure, analogous to HTTP headers:
+
+```
+              HTTP header              CS-MD frontmatter field
+Structured:   Content-Type: text/html  Type: CONTEXT           ← enum, machine parses directly
+              Last-Modified: <date>    Updated: 2026-03-28T16:45 ← ISO 8601 datetime, machine parses
+              Via: proxy1, proxy2      Provenance: x@m:abc1234 ← identity format, machine resolves
+
+Semi-struct:  Accept-Language: ja,en   Tags: finding, fetch-mcp ← comma list, grep searchable
+              Cache-Control: no-cache  Status: draft            ← enum, but simpler
+
+Free-form:    Server: Apache/2.4       Context: MINUTES 2026-03-21 — fetch MCP の議論
+                                       Description: sandbox 内から fetch MCP で URL 取得を実証
+```
+
+**Structured** fields have machine-parseable formats (enums, dates, identity syntax).
+Parsers can validate and process them mechanically.
+
+**Semi-structured** fields have conventions (comma-separated, enum-like) but
+are primarily for search and filtering, not mechanical processing.
+
+**Free-form** fields are human-readable descriptions. They are grep-searchable
+but not mechanically parsed. Their value is in human understanding, not machine processing.
+
+**Design rationale**: this spectrum exists because metadata serves two audiences.
+Machine-oriented fields (Type, Updated, Provenance) need strict formats for
+tooling to work. Human-oriented fields (Context, Description) need to be
+readable and writable without consulting a format spec. Forcing strict format
+on human fields reduces usability. Allowing free-form on machine fields
+breaks tooling. The spectrum balances both.
+
+**Lesson from HTTP**: HTTP's `User-Agent` header was historically free-form
+(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/...`), making it
+notoriously difficult to parse. IETF developed Structured Fields (RFC 8941)
+and Client Hints (RFC 8942) to replace free-form headers with structured ones.
+CS-MD avoids this mistake by **declaring structure level upfront** for each field.
+Fields that are free-form (Context, Description) are intentionally so — there
+will be no future pressure to "structure" them, because the spec explicitly
+documents that their value is in human readability, not machine parsing.
+
+### 3.1 MUST Fields
+
+Every CS-MD document MUST include:
+
+| Field | Format | Structure | Semantics |
+|---|---|---|---|
+| Type | enum (see §4) | structured | Document type identifier |
+| Updated | ISO 8601 datetime with timezone (`YYYY-MM-DDTHH:MM±HH:MM` or `YYYY-MM-DDTHH:MM:SSZ`) | structured | Last modification timestamp. Timezone is required — naive datetime is ambiguous across agents and timezones |
+| Tags | comma-separated | semi-structured | Classification, search, and **implicit document relationships** (see §3.5) |
+
+### 3.2 MAY Fields
+
+The following fields MAY appear. Parsers MUST NOT fail on their absence.
+
+| Field | Format | Structure | Semantics |
+|---|---|---|---|
+| Version | SemVer `X.Y.Z` | structured | Document version. Major = breaking section change |
+| Provenance | identity or chain (see §3.4) | structured | Origin and lineage |
+| Status | enum (see §3.2.2) | semi-structured | Lifecycle state (IETF RFC-inspired) |
+| Context | human-readable description | free-form | Where the discussion behind this document happened |
+| Description | single line | free-form | Short summary for indexing |
+
+### 3.2.1 Status Field
+
+The Status field follows a lifecycle model inspired by the IETF RFC
+process (RFC 2026, BCP 9). Documents progress through states:
+
+| Status | IETF parallel | Meaning |
+|---|---|---|
+| `draft` | Internet-Draft | Work in progress, not yet reviewed |
+| `discussion` | — | Under active discussion |
+| `in_progress` | — | Being implemented or refined |
+| `confirmed` | Proposed Standard | Reviewed and accepted |
+| `active` | Standards Track | Current and in use |
+| `stable` | Internet Standard | Mature, unlikely to change |
+| `archived` | Historic | No longer actively maintained |
+| `obsoleted` | Obsoleted | Replaced by another document (MUST include "OBSOLETED by" pointer) |
+
+Parsers SHOULD accept unknown values (Postel's Law) but cs-lint
+warns on values outside this set.
+
+### 3.2.2 Context Field
+
+Context links a document to the discussion that produced it (provenance of reasoning).
+
+**Context is free-form, NOT a resolvable path.** It is metadata for humans:
+
+```yaml
+# in YAML frontmatter:
+Context: MINUTES 2026-03-21 — fetch MCP sandbox 化の議論
+Context: Slack #arch-review 2026-03-20
+Context: PR #42 review comments
+```
+
+Machine-resolvable links to specific discussions belong in `## References`,
+not in the Context header. Context tells a human "where to look."
+References tells a machine "what to fetch."
+
+This separation follows the metadata structure spectrum:
+Context = free-form (human), References = file-relative path or `repo:hash` (machine).
+| Description | single line | Short summary for indexing |
+
+### 3.4 Provenance Format
+
+Provenance identifies WHERE a document comes from and THROUGH WHICH layers.
+
+**Identity format** (single origin):
+
+```
+repo:short-hash
+```
+
+Example: `contextus:abc1234`
+
+- `repo`: git repository name (locator — narrows search scope)
+- `short-hash`: git short hash (`git rev-parse --short`). Length is NOT fixed — git auto-adjusts to ensure uniqueness within the repo. Typically 7–12 characters.
+
+Hash is globally unique. `repo` narrows the search scope for resolution.
+Branch MAY be included as `repo@branch:hash` for human context but is NOT required —
+hash alone is sufficient to identify the commit.
+
+Full SHA is NOT included in CS-MD headers (context conservation).
+Tools that need the full hash resolve via `git -C <repo> rev-parse <short-hash>`.
+Tools MUST NOT assume a fixed hash length — parse by delimiter (`:`, `.`), not by character count.
+
+**Chain format** (multi-layer origin, most specific → most general):
+
+```
+repo:hash-->repo:hash-->repo:hash
+```
+
+Example: `contextus-dev-sh:abc1234-->contextus-dev:def5678-->contextus:ghi9012`
+
+Branch MAY be included: `contextus-dev-sh@main:abc1234-->...`
+
+Chain delimiter: `-->` (ASCII, mermaid flowchart compatible, grep-friendly).
+Direction: left = most specific (L3), right = most general (L0).
+No spaces around `-->`.
+
+**Design rationale**:
+
+- Hash is the identifier (globally unique via SHA-1/SHA-256)
+- repo is the locator (narrows search scope for resolution)
+- branch is optional human context (NOT required for identity)
+- `repo:hash` is the SHOULD format — minimal, sufficient, machine-resolvable
+- Human readability comes from link text, not from the target
+- Short hash balances context conservation and machine precision
+- git is the resolver for full hash when needed
+- Chain uses `-->` from mermaid graph syntax for familiarity
+
+### 3.4.1 Provenance hash vs ref hash
+
+Provenance and references use different hash types:
+
+| Context | Hash type | How to get | Resolution |
+|---|---|---|---|
+| Provenance (frontmatter) | commit hash | `git rev-parse --short HEAD` | identifies repo snapshot (where document came from) |
+| ref (link target) | blob hash | `git hash-object <file>` | identifies file content (`git cat-file -p <hash>`) |
+
+Provenance answers "where did this document come from?" → commit hash (repo snapshot).
+ref answers "what file am I pointing to?" → blob hash (file content, directly readable).
+
+`git cat-file -p <blob-hash>` returns the file content without needing the filepath.
+This is why refs use blob hash — the agent can read the target without knowing its path.
+
+### 3.5 Tags as Implicit Relationships
+
+Tags serve a dual role: classification AND implicit document relationships.
+
+Documents sharing tags are implicitly related — without explicit links.
+This is **editorial judgment** (curated by human/agent), not mechanical extraction.
+
+```yaml
+# Document A frontmatter:
+Tags: security, gh-auth
+# Document B frontmatter:
+Tags: security, oauth
+# → Shared tag "security" → implicitly related
+```
+
+**Why Tags replace See-Also:**
+
+- See-Also (explicit link to specific docs) requires maintenance
+- Tags (shared vocabulary) create relationships that **emerge** from the vocabulary
+- INDEX.jsonl can compute relatedness from shared tags
+- Tags is a MUST field
+
+**Tag vocabulary is not centrally controlled.** Tags are free-form.
+Projects SHOULD develop consistent tag conventions over time.
+KNOWLEDGE entries SHOULD use class tags: `decision`, `finding`, `lesson`.
+
+### 3.6 Rejected Header Fields
+
+The following fields were considered and rejected (YAGNI):
+
+| Field | Rejected because |
+|---|---|
+| Lines / Size | git provides this (`git show HEAD:file \| wc -l`). No FS dependency |
+| Valid-Until | git history provides freshness. Manual expiry dates rot |
+| Priority | Manual priority is a dirty hack. Importance emerges from graph (refs_in count) |
+| See-Also | Tags provide curated implicit relationships. Explicit links are in body text |
+| Language | Modern LLMs detect language from content. Project context disambiguates |
+
+These can be reconsidered if a concrete use case emerges (Postel's Law: adding later is not breaking).
+
+### 3.7 Extensibility
+
+Parsers MUST ignore unknown header fields (Postel's Law).
+Adding a new MAY field is NOT a breaking change (no major version bump).
+
+Domain-specific fields (L2/L3) MAY be added.
+[CONTEXTUS-REGISTRY](https://github.com/lef/contextus/blob/main/specs/CONTEXTUS-REGISTRY.md) is the authoritative trust anchor
+for all CS-MD field names. Projects using CS-MD independently SHOULD reference
+the registry for field semantics.
+
+## 4. Document Types
+
+### 4.1 Classification
+
+```
+Constraints:   CONSTITUTION          — normative (absolute rules)
+Deliverables:  PLAN → SPEC → TODO → TASK  — Structured Flow artifacts
+References:    DRAFT ↔ KNOWLEDGE     — informative (symmetric pair)
+State:         CONTEXT               — agent/human context (session state, instructions, etc.)
+```
+
+### 4.1.2 Workflow Artifact Lifecycle
+
+Document types should be understood as workflow artifacts with a lifecycle, not as a flat list.
+
+| Workflow phase | Primary artifacts | Role |
+|---|---|---|
+| Intent | PLAN | free-form intent and direction |
+| Structure | SPEC, DESIGN | structured requirements / design |
+| Tasks | TODO, TASK | backlog and execution unit |
+| Execute | WORKLOG, MINUTES | task trace and discussion trace |
+| Record | KNOWLEDGE, BELIEF | distilled durable knowledge and current justified assumptions |
+| Continuity | HANDOFF, CONTEXT | next-session entry and current operating state |
+
+Lifecycle principle:
+
+- `PLAN` / `DRAFT` are early and exploratory
+- `TASK` / `WORKLOG` / `MINUTES` are execution-time trace artifacts
+- `KNOWLEDGE` / `BELIEF` / `SPEC` are distilled artifacts that should survive session switches and promotion
+- `HANDOFF` bridges one session to the next; it should point to precise upstream records rather than re-compress everything into itself
+
+This lifecycle comes before fine-grained field enforcement.
+Reference requirements, freshness expectations, and promotion rules should be derived from the role of an artifact in this lifecycle, not assigned as disconnected per-type rules.
+
+### 4.1.3 Reference obligations derived from lifecycle
+
+Reference strictness should follow artifact role:
+
+| Lifecycle role | Artifacts | Reference policy |
+|---|---|---|
+| Distilled | KNOWLEDGE, BELIEF, SPEC, DESIGN | future `BLOCK` candidate; treat as `References MUST` directionally |
+| Execution trace | TASK, WORKLOG | strong `ref` direction; intended to point at upstream intent/structure/trace, but not first-wave `BLOCK` |
+| Scratch / continuity | MINUTES, HANDOFF, TODO, PLAN, CONTEXT | references are still expected, but enforcement timing differs by lifecycle role |
+
+L0 implication:
+
+- first-wave shared enforcement should start from distilled artifacts
+- later phases may strengthen execution-trace artifacts (`TASK`, `WORKLOG`) once lifecycle routing is stable
+- scratch/continuity artifacts should not be forced to carry the same first-wave timing before their lifecycle role is stabilized
+
+This keeps `References` aligned with workflow semantics instead of treating every type as equal.
+
+### 4.1.4 Graph connectivity and reference direction
+
+References form a directed graph. Graph connectivity determines discoverability — an orphan document (incoming refs = 0) exists but cannot be found by traversal.
+
+**Index is not an edge.** KNOWLEDGE.md の Decisions テーブルは **context injection 用の短期キャッシュ**（working memory）であり、グラフのエッジではない。git-is-the-index 原則の延長: git が INDEX であり、KNOWLEDGE.md テーブルは session 開始時に context window に載せるための一覧にすぎない。蒸留で行が削除されると、テーブルからのリンクは消える。テーブルだけに依存する knowledge は蒸留のたびに orphan になる。
+
+構造:
+
+| Layer | Role | Persistence |
+|---|---|---|
+| KNOWLEDGE.md Decisions テーブル | Working memory / context injection cache | 蒸留で消える |
+| `knowledge/*.md` 個別ファイル | Durable knowledge | git に永続 |
+| References (knowledge ↔ spec, ↔ MINUTES) | Graph edge | durable knowledge と共に永続 |
+
+**Durable edges belong in related documents:**
+
+| Link source | Link target | Why |
+|---|---|---|
+| SPEC の References | 関連 KNOWLEDGE | spec を支える知見 |
+| KNOWLEDGE の References | 議論した MINUTES 議題 | 知見の由来 |
+| KNOWLEDGE の References | 関連 SPEC | 知見が反映された仕様 |
+| SPEC の References | 他の SPEC | 仕様間の依存 |
+
+**Lifecycle implication:** KNOWLEDGE.md Decisions テーブルは discovery の入口（index）。graph の永続的な接続は、knowledge ↔ spec, knowledge ↔ MINUTES に持たせる。
+
+Query tools can verify connectivity by detecting documents with zero incoming references.
+
+**MINUTES is the origin.** contextus の知識は全て対話から生まれる。MINUTES が graph の起点:
+
+```
+MINUTES 議題XX → knowledge/finding.md   (議論から生まれた知見)
+MINUTES 議題XX → specs/SPEC.md          (議論で設計した仕様)
+MINUTES 議題XX → tasks/TASK.md          (議論で切ったタスク)
+knowledge/finding.md → specs/SPEC.md    (知見が反映された仕様)
+```
+
+MINUTES の議題に `[name](path)` で成果物をリンクすることで、全ての成果物が対話に紐づく。KNOWLEDGE/Finding/TASK が tag search でしか到達できない状態は、MINUTES からのリンクが欠けていることを意味する。
+
+**Orphan の解釈:**
+
+| Type | Orphan の意味 |
+|---|---|
+| SPEC | 問題 — 他の文書から参照されるべき |
+| KNOWLEDGE/Finding | MINUTES からのリンクが欠けている |
+| TASK | MINUTES または TODO からのリンクが欠けている |
+| MINUTES/HANDOFF/PLAN | 構造的 — entry point 文書 |
+| archive/ | 正常 — 到達不要 |
+
+Execution-trace implication:
+
+- `TASK` should normally point upstream to the structure/intent it is executing
+  - e.g. `SPEC`, `DESIGN`, relevant `MINUTES`, or exact `HANDOFF` records
+- `WORKLOG` should normally point upstream to the task and evidence/attempt trail it records
+  - e.g. `TASK`, `MINUTES`, prior `WORKLOG`, or relevant `SPEC`
+
+These are not yet first-wave shared `BLOCK` requirements, but they are no longer "optional by default" in design terms.
+
+Broad default:
+
+- most durable or reusable artifacts should carry references
+- later-wave artifacts are not exempt from references; they simply enter shared `BLOCK` later
+- `HANDOFF` should still point to exact upstream records even when its enforcement timing differs from distilled artifacts
+- `MINUTES` remains the weakest enforcement target because it is the primary scratch trace
+
+### 4.1.1 Normative vs Informative — Requirements Gradient
+
+Document types form a gradient from normative (binding) to informative (contextual).
+This gradient determines how strictly optional fields (like References) are required.
+
+| Category | Types | Nature | References | [NEEDS CLARIFICATION] |
+|---|---|---|---|---|
+| **Normative** | CONSTITUTION, SPEC, DESIGN | Binding. Must be followed | **MUST** | Must be resolved before confirmation |
+| **Deliverable** | TASK, TODO | Actionable. Must be executable | **SHOULD** (TASK) / MAY (TODO) | Must NOT remain in TASK |
+| **Execution trace** | WORKLOG, MINUTES | Scratch / trace during execution | MAY / SHOULD by downstream policy | Must NOT silently replace distilled records |
+| **Informative** | KNOWLEDGE (individual file) | Verified facts. Trusted reference | **SHOULD** | Must NOT remain |
+| **State** | BELIEF, HANDOFF, CONTEXT | Current assumptions / continuity | Derived from lifecycle role | Must NOT drift from upstream records |
+| **Exploratory** | DRAFT, PLAN | Unresolved. Work in progress | **MAY** | MAY remain |
+
+**Design principle**: normative documents MUST cite their sources (References).
+Distilled artifacts trend toward MUST as well. Execution-trace artifacts trend toward strong upstream references. State documents derive their strictness from workflow role and promotion rules rather than from a flat per-type default.
+
+This gradient applies to ALL optional fields and sections — not just References.
+When adding a new MAY field to the registry, its requirement level per document
+type SHOULD follow this gradient.
+
+### 4.2 Type Registry
+
+| Type | Role | MUST sections | File location |
+|---|---|---|---|
+| CONTEXT | agent/human context | ## Task, ## Context (optional) | project root or $FLOW_DIR |
+| TODO | backlog | phase/category H2s | $FLOW_DIR/ |
+| TASK | execution unit | ## Goal, ## Context | $FLOW_DIR/tasks/ |
+| PLAN | intent | free-form | $FLOW_DIR/ |
+| SPEC | structured requirements (dev) | L2-defined. **Status: MUST** | $FLOW_DIR/ |
+| DESIGN | structured design (kw) | L2-defined. **Status: MUST** | $FLOW_DIR/ |
+| KNOWLEDGE | verified discoveries | topic H2s | $FLOW_DIR/ |
+| BELIEF | current justified assumptions | topic H2s | $FLOW_DIR/ or CS-Repo |
+| WORKLOG | task execution trace | per-task entries | $FLOW_DIR/ or `.contextus/` |
+| MINUTES | discussion trace | topic sections | $FLOW_DIR/ or `.contextus/` |
+| HANDOFF | continuity entry | ## Task, ## Next, ## Read First | project root or `.contextus/` |
+| DRAFT | exploration, unresolved | ## 問題, ## 未解決 | $FLOW_DIR/ |
+| CONSTITUTION | absolute constraints | ## Inherited Principles | $FLOW_DIR/ |
+
+### 4.3 DRAFT ↔ KNOWLEDGE Symmetry
+
+DRAFT and KNOWLEDGE are a symmetric pair (informative references):
+
+- DRAFT: unresolved, hypothetical, exploratory. `[NEEDS CLARIFICATION]` MAY remain.
+- KNOWLEDGE: resolved, verified, accumulated. `[NEEDS CLARIFICATION]` MUST NOT remain.
+- Resolution flow: DRAFT → resolves → KNOWLEDGE. New questions: KNOWLEDGE → DRAFT.
+
+### 4.4 KNOWLEDGE: Human Index + Inbox
+
+KNOWLEDGE.md serves a dual role as **human-curated index** and **quick capture inbox**.
+
+```markdown
+---
+Type: KNOWLEDGE
+Updated: 2026-03-22T00:00+09:00
+---
+
+# KNOWLEDGE
+
+## Quick Notes
+- small finding here (2026-03-22)
+
+## Entries
+- [fetch MCP e2e](knowledge/fetch-mcp-e2e.md) — finding
+```
+
+- **Quick Notes**: rapid capture of small findings. CS-MD compliant (it's just body content)
+- **Entries**: curated, importance-ranked links to individual `knowledge/*.md` files
+- When a Quick Note matures → promoted to individual CS-MD file in `knowledge/`
+- INDEX.jsonl is the **machine** index (auto-generated, complete)
+- KNOWLEDGE.md is the **human** index (curated, editorial)
+
+Both are valid CS-MD documents. Both are derived from individual files.
+
+### 4.5 TODO vs TASK
+
+- TODO = backlog (planning level, output of Structured Flow "Tasks" step)
+- TASK = execution unit (runtime level, handed to an agent)
+- Orchestrator selects from TODO → creates TASK → agent executes → TODO marked [x]
+
+## 5. References
+
+### 5.1 Syntax
+
+References MUST use standard markdown link syntax:
+
+```markdown
+Internal: [text](relative/path.md#heading)
+External: [text](https://example.com)
+```
+
+No new syntax is invented. `#heading` anchors work in standard markdown.
+
+### 5.2 Internal References
+
+Internal references SHOULD use `repo:blob-hash` format. Other formats are acceptable.
+The hash is a **blob hash** (`git hash-object <file>`), NOT a commit hash.
+
+```markdown
+[RECALL-ENFORCEMENT-V2](contextus:9a5427d)     ← SHOULD (strongly recommended)
+[design-doc](contextus@main:9a5427d)            ← OK (branch is optional locator)
+[design-doc](../../design-doc.md#section)       ← OK (file-relative, intra-repo)
+```
+
+**`repo:blob-hash` is strongly recommended** because:
+- blob hash is globally unique — `repo` narrows the search scope
+- `git cat-file -p <blob-hash>` reads the file content directly (no filepath needed)
+- hash survives file renames (file-relative paths break on rename)
+- query tools may return this format directly
+- human readability is in the link **text**, not the target — `[readable text](repo:blob-hash)`
+
+**Acceptable alternatives:**
+- `repo@branch:hash` — branch adds human context (which branch to look at)
+- file-relative path — standard markdown, renderers support it, useful intra-repo
+- URL — external references
+
+**Prohibited:**
+- Absolute paths (`/design-doc.md`) — zero portability
+- Git-root-relative paths (`design-doc.md` from non-sibling) — non-standard
+
+When file-relative references break due to renames, repair via
+`git log --follow` (detects renames, tooling can update links).
+
+### 5.3 External References
+
+External references use URLs. Permalink stability is assumed but not guaranteed.
+
+### 5.4 Inline Markers
+
+| Marker | Meaning | Allowed in |
+|---|---|---|
+| `[NEEDS CLARIFICATION]` | Unresolved ambiguity | DRAFT, SPEC, DESIGN |
+| `[NEEDS CLARIFICATION: detail]` | Unresolved with context | DRAFT, SPEC, DESIGN |
+
+Markers MUST be resolved before a SPEC/DESIGN is confirmed.
+Markers MAY remain in DRAFT documents.
+
+## 6. KNOWLEDGE Classification
+
+KNOWLEDGE entries fall into three classes with different stability:
+
+| Class | When | Stability | Archive strategy |
+|---|---|---|---|
+| Decision | Structure step | High (ADR-like, immutable) | Archive directly |
+| Finding | Execute step | Low (may become stale) | Needs validity check |
+| Lesson | Record step | High (transferable) | Candidate for L0/L2 promotion |
+
+Tags SHOULD indicate the class: `Tags: decision, ...` / `Tags: finding, ...` / `Tags: lesson, ...`
+
+## 7. Domain Customization
+
+CS-MD core is defined at L0. L2 layers customize domain-specific aspects:
+
+| Aspect | L0 (common) | L2-dev | L2-kw |
+|---|---|---|---|
+| Flow directory | $FLOW_DIR | `.spec/` | `.design/` |
+| Structure doc | SPEC or DESIGN | SPEC.md | DESIGN.md |
+| Evidence method | (L2 decides) | test-first (TDD) | evidence-first |
+
+## 8. Compatibility
+
+CS-MD has been verified (2026-03-21) to coexist with:
+
+| Tool | Metadata format | Conflict |
+|---|---|---|
+| Spec Kit (GitHub) | `**Key**: value` inline | None |
+| GSD | YAML frontmatter + XML tags | Same frontmatter format — fields coexist via Postel's Law |
+| OpenSpec (Fission AI) | heading patterns | None |
+| AGENTS.md (AAIF) | free-form | None |
+
+Coexistence strategy: "if both exist, read both."
+
+## 9. Registry
+
+[CONTEXTUS-REGISTRY](https://github.com/lef/contextus/blob/main/specs/CONTEXTUS-REGISTRY.md) is the authoritative source for
+CS-MD field names, requirement levels, and semantics. All MUST/SHOULD/MAY
+designations for header fields in this spec are defined in the registry.
+
+CS-MD can be used independently of the full contextus system, but the
+registry at `github.com/lef/contextus` remains the single source of truth
+for vocabulary definitions.
+
+## 10. Security Considerations
+
+- CS-MD documents MAY contain `[NEEDS CLARIFICATION]` markers that indicate
+  incomplete specifications. Implementations SHOULD NOT proceed to execution
+  with unresolved markers in normative documents (SPEC, CONSTITUTION).
+- Header fields from untrusted sources SHOULD be validated against a registry, if one is maintained.
+- The Provenance field provides lineage but does not guarantee authenticity.
+  Git commit signatures are the appropriate mechanism for authentication.
+
+## References
+
+### Normative
+
+- [RFC 761](https://datatracker.ietf.org/doc/html/rfc761) — Postel's Law (Robustness Principle)
+- [RFC 8174](https://datatracker.ietf.org/doc/html/rfc8174) — RFC 2119 Keywords Update
+- [CommonMark](https://commonmark.org/) — Markdown specification
+- [ISO 8601](https://www.iso.org/iso-8601-date-and-time-format.html) — Date and time format
+- [SemVer 2.0](https://semver.org/) — Semantic Versioning
+- [CONTEXTUS-REGISTRY](https://github.com/lef/contextus/blob/main/specs/CONTEXTUS-REGISTRY.md) — Vocabulary registry (authoritative source for CS-MD field definitions)
+
+### Informative — Provenance and Identity
+
+- [SPDX 2.3 VCS Locator](https://spdx.github.io/spdx-spec/v2.3/external-repository-identifiers/) — `git+https://host/repo@ref#subpath` (ISO/IEC 5962:2021)
+- [purl (Package URL)](https://github.com/package-url/purl-spec) — `pkg:github/owner/repo@commitish`
+- [OCI Distribution Reference](https://github.com/distribution/reference) — `name:tag@digest` pattern
+- [gitrevisions(7)](https://git-scm.com/docs/gitrevisions) — Git revision syntax
+- [git-clone URL format](https://git-scm.com/docs/git-clone) — Git URL schemes
+
+### Informative — Graph Connectivity
+
+- Git history, frontmatter, and Markdown links together form the durable context graph. Generated index files are caches, not sources of truth.
+
+### Informative — Metadata Structure Lessons
+
+- [RFC 2026 / BCP 9 (Internet Standards Process)](https://datatracker.ietf.org/doc/html/rfc2026) — IETF RFC lifecycle model. CS-MD Status field values (draft, active, stable, obsoleted, archived) are inspired by the RFC document lifecycle (Internet-Draft → Proposed Standard → Internet Standard → Historic / Obsoleted)
+- [RFC 8941 (Structured Fields)](https://datatracker.ietf.org/doc/html/rfc8941) — IETF's retrofit of structured formats onto HTTP headers. CS-MD avoids this need by declaring structure level upfront (§3.0)
+- [RFC 8942 (Client Hints)](https://datatracker.ietf.org/doc/html/rfc8942) — Structured replacement for free-form `User-Agent`. Cautionary tale: free-form metadata that should have been structured from the start
+
+### Informative — Prior Art (Structured Metadata on Existing Formats)
+
+CS-MD follows the same pattern as these HTML structured data approaches:
+add semantic conventions on top of an existing format without changing the format.
+
+- [Microformats](https://microformats.org/) (2004) — semantic class names in HTML (`class="vcard"`, `class="hentry"`). Community-maintained vocabulary wiki. Graceful degradation. Directly inspired CS-MD's "conventions on top of existing format" approach
+- [Microdata](https://html.spec.whatwg.org/multipage/microdata.html) (2009, HTML5) — `itemscope`/`itemprop` attributes. W3C standardized. More formal than microformats but same principle
+- [JSON-LD](https://json-ld.org/) — structured data as `<script>` block in HTML. Machine-readable, invisible to users. Analogous to CS-MD's `> header` block (visible but distinct from body)
+- [RDFa](https://rdfa.info/) — RDF attributes in HTML. Heavier than microformats, less adopted
+
+### Informative — Design Influences
+
+- [Mermaid Flowchart](https://mermaid.js.org/syntax/flowchart.html) — `-->` link syntax (Provenance chain delimiter)
+- [OpenSpec](https://thedocs.io/openspec/) — Heading pattern conventions
+- [AGENTS.md (AAIF)](https://agents.md/) — "Just a markdown file" philosophy
+- [Fabian Kubler](https://fabian-kuebler.com/posts/markdown-agentic-ui/) — Markdown as agentic protocol
+- [Rob Pike's Rules](https://users.ece.utexas.edu/~adnan/pike.html) — EBP influence (Rule 2: Measure)
+- [Jon Postel / RFC 761](https://datatracker.ietf.org/doc/html/rfc761) — Robustness Principle
+- [ADR (Architecture Decision Records)](https://adr.github.io/) — KNOWLEDGE Decision class
+- [Dublin Core](https://www.dublincore.org/specifications/dublin-core/dces/) — Metadata field naming
+- [Schema.org CreativeWork](https://schema.org/CreativeWork) — dateModified, version, status
+
+## Acknowledgments
+
+This specification builds on the work of:
+
+- **Jon Postel** — the Robustness Principle (RFC 761, 1980) is the foundation
+  of CS-MD's extensibility and compatibility design. "Be conservative in what
+  you send, be liberal in what you accept" governs every design decision in
+  this spec: unknown fields are ignored, new extensions don't break parsers,
+  tools coexist without coordination.
+
+- **Tantek Çelik and the microformats community** — the "use existing format,
+  add conventions" approach that CS-MD applies to markdown was pioneered by
+  microformats for HTML in 2004. CS-MD is microformats for the AI agent era.
+
+- **Rob Pike** — Rule 2 ("Measure. Don't tune for speed until you've measured")
+  became the EBP principle. This spec was validated by running code, not by
+  reasoning.
+
+## Appendix A: Markdown Parser Difficulty (Survey 2026-03-22)
+
+This appendix documents why markdown parsing is difficult and how CS-MD
+mitigates the risks. **This analysis is incomplete — see WARNING in §1.5.**
+
+### A.1 Why Markdown Is Hard to Parse
+
+Markdown is not context-free. Key issues (MacFarlane, "Beyond Markdown" 2022):
+
+1. **Emphasis**: `*a**b*` — 17 rules needed (CommonMark). Doubled characters
+   (`**`) create exponential ambiguity. 20+ parsers produce different output.
+2. **Indented code blocks**: force complex indentation rules for list items.
+3. **Raw HTML pass-through**: parser must recognize HTML tag names.
+4. **Reference links**: `[foo]` interpretation depends on definitions anywhere in document.
+   Cannot parse incrementally.
+5. **List item membership**: "how far to indent?" has no simple answer.
+6. **Block-level interruption**: can a list start without a blank line?
+
+The original Markdown (Gruber, 2004) was a prose description + buggy Perl script.
+No formal grammar. No test suite. CommonMark (2014) is a 164-page spec with
+600+ examples — an after-the-fact RFC for a format already in production for 10 years.
+
+### A.2 CS-MD's Mitigation Strategy
+
+CS-MD uses constructs believed to be in the "safe" area of markdown.
+**This table is preliminary and requires validation against multiple parsers.**
+
+| CS-MD uses | MacFarlane pain point? | Risk |
+|---|---|---|
+| `# Title` (H1) | No | Low — unambiguous |
+| `> key: value` (blockquote) | No | Low — grep, no parser needed |
+| `## Section` (H2) | Interruption (#6) | Low if preceded by blank line |
+| `- item` (flat list) | Membership (#5) | Low for flat (no nesting) |
+| `- [ ] task` (checkbox) | GFM extension | Low — widely supported |
+| `[text](path)` (inline link) | Not #4 (inline, not reference) | Low |
+| `[MARKER]` (no link def) | Could be confused with #4 | **Needs verification** |
+
+### A.3 What CS-MD Avoids
+
+- Emphasis (`*`, `**`, `_`) — pain point #1, not used in headers or structure
+- Indented code blocks — pain point #2, only fenced blocks if any
+- Raw HTML — pain point #3, never used
+- Reference links (`[foo]` with separate definition) — pain point #4, inline only
+- Nested lists — pain point #5, flat lists only
+- Ambiguous block starts — pain point #6, blank lines between all blocks
+
+### A.4 Open Questions (TBD)
+
+- Is `[NEEDS CLARIFICATION]` ever confused with a reference link by any parser?
+- Do blockquote lines (`> key: value`) interact with lazy continuation in any parser?
+- Are there edge cases where `## Heading` immediately after `> blockquote` is ambiguous?
+- Should CS-MD mandate blank lines before `##` headings (CommonMark recommends but does not require)?
+- Djot (MacFarlane's clean-slate redesign) — relevant for future CS-MD evolution?
+
+### A.5 References
+
+- [John MacFarlane — Beyond Markdown](https://johnmacfarlane.net/beyond-markdown.html) (2022)
+- [CommonMark](https://commonmark.org/)
+- [GFM Spec](https://github.github.com/gfm/)
+- [Babelmark 3](https://babelmark.github.io/) — compare 20+ parsers
+- [Djot](https://github.com/jgm/djot) — clean-slate markdown alternative
+- [Why Markdown is not context-free](https://roopc.net/posts/2014/markdown-cfg/)
+
+## Authors
+
+This specification was developed through collaborative sessions between a human author and AI agents.
