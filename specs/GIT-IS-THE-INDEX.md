@@ -1,10 +1,10 @@
 ---
 Type: SPEC
 Version: 0.0.1
-Updated: 2026-06-29T02:05+09:00
+Updated: 2026-06-30T08:06+09:00
 Status: draft
 Tags: cs-md, git, index, rationale, public-snapshot
-Description: CS-MD design rationale: Git is the primary index; generated index files are optional caches.
+Description: "CS-MD design rationale: Git is the primary index; generated index files are optional caches."
 ---
 
 # Git Is the Index

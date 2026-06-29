@@ -1,6 +1,6 @@
 ---
 Type: README
-Updated: 2026-06-29T02:05+09:00
+Updated: 2026-06-30T08:06+09:00
 Status: active
 Tags: cs-md, markdown, contextus, public-snapshot
 Description: Public snapshot of Context Structured Markdown specifications
@@ -27,6 +27,20 @@ CS-MD は Contextus の内部で生まれましたが、Contextus 全体の work
 This repository is an early public snapshot for CS-MD 0.0.1.
 
 The specifications are drafts. The format is already dogfooded in Contextus-based projects, but names, validation rules, and tooling contracts may still change before a stable 0.1.0 release.
+
+この repository は CS-MD 0.0.1 の初期公開 snapshot です。
+
+仕様はまだ draft です。Contextus 系の project ではすでに実運用していますが、安定版 0.1.0 までに type 名、validation rule、tooling contract は変わる可能性があります。
+
+## Near-term Roadmap
+
+CS-MD is expected to evolve beyond this 0.0.1 snapshot. Planned work includes clearer document type taxonomy, stronger validation rules, and small Git wrapper tools for querying records without hiding Git as the source of truth.
+
+The intended use is not limited to project documentation. A personal repository can also grow as a CS-MD knowledge base: durable facts stay in Git, while humans and LLM agents use the Markdown layer to interpret, connect, and revise records over time.
+
+CS-MD はこの 0.0.1 snapshot から継続的に改善していく予定です。直近では、document type taxonomy の整理、validation rule の強化、Git を source of truth として隠さない小さな query / wrapper tool の整備を進めます。
+
+用途は project documentation に限りません。自分の repository を CS-MD knowledge base として育てることも想定しています。堅い事実は Git history に置き、人間と LLM agent が Markdown layer を使って record を解釈し、つなぎ直し、時間をかけて育てていく、という使い方です。
 
 ## Specifications
 

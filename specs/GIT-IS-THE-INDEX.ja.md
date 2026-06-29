@@ -1,10 +1,10 @@
 ---
 Type: SPEC
 Version: 0.0.1
-Updated: 2026-06-29T02:05+09:00
+Updated: 2026-06-30T08:06+09:00
 Status: draft
 Tags: cs-md, git, index, rationale, public-snapshot
-Description: CS-MD の設計根拠: Git が primary index であり、生成 index file は optional cache である。
+Description: "CS-MD の設計根拠: Git が primary index であり、生成 index file は optional cache である。"
 ---
 
 # Git Is the Index
